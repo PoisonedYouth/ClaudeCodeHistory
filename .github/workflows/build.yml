@@ -3,6 +3,7 @@ name: Build and Test
 on:
   push:
     branches: [ main, develop ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
@@ -60,19 +61,22 @@ jobs:
     name: Package Application
     needs: build
     runs-on: ${{ matrix.os }}
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
             package-task: packageDeb
             artifact-pattern: '*.deb'
+            artifact-name: ClaudeCodeHistory-linux.deb
           - os: macos-latest
             package-task: packageDmg
             artifact-pattern: '*.dmg'
+            artifact-name: ClaudeCodeHistory-macos.dmg
           - os: windows-latest
             package-task: packageMsi
             artifact-pattern: '*.msi'
+            artifact-name: ClaudeCodeHistory-windows.msi
 
     steps:
       - name: Checkout code
@@ -94,9 +98,17 @@ jobs:
       - name: Package application
         run: ./gradlew ${{ matrix.package-task }} --no-daemon
 
-      - name: Upload package
+      - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
           name: package-${{ matrix.os }}
           path: build/compose/binaries/main/**/${{ matrix.artifact-pattern }}
           retention-days: 90
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/compose/binaries/main/**/${{ matrix.artifact-pattern }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
