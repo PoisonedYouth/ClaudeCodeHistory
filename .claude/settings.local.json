@@ -1,0 +1,54 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:www.augmentedswe.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(chmod:*)",
+      "Bash(./gradlew:*)",
+      "Bash(java -version:*)",
+      "Bash(gradle wrapper:*)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(/usr/libexec/java_home:*)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/poisonedyouth/IdeaProjects/private/ClaudeCodeHistory/hooks/capture-conversation.sh"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/poisonedyouth/IdeaProjects/private/ClaudeCodeHistory/hooks/capture-conversation.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/poisonedyouth/IdeaProjects/private/ClaudeCodeHistory/hooks/capture-conversation.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+# Gradle
+.gradle/
+build/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# IntelliJ IDEA
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries
+.idea/**/shelf
+.idea/sonarlint
+.idea/compiler.xml
+.idea/jarRepositories.xml
+*.iws
+out/
+
+# MacOS
+.DS_Store
+
+# Logs
+*.log
+
+# Application data
+.claude-history/
+*.db
+*.db-shm
+*.db-wal
+
+# Package distributions
+*.dmg
+*.msi
+*.deb
+*.app
+
+# Local configuration
+local.properties
