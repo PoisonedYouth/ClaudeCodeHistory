@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.claudecode"
-version = "0.0.1"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -86,7 +86,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "ClaudeCodeHistory"
-            packageVersion = "0.0.1"
+            packageVersion = "1.0.0"
             description = "Search and browse your Claude Code conversation history"
             vendor = "Claude Code Community"
 

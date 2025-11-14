@@ -41,9 +41,9 @@ A desktop application for searching and browsing your Claude Code conversation h
 ### Pre-built Binaries
 
 Download the latest release for your platform:
-- **macOS**: `ClaudeCodeHistory-0.0.1.dmg`
-- **Windows**: `ClaudeCodeHistory-0.0.1.msi`
-- **Linux**: `ClaudeCodeHistory-0.0.1.deb`
+- **macOS**: `ClaudeCodeHistory-1.0.0.dmg`
+- **Windows**: `ClaudeCodeHistory-1.0.0.msi`
+- **Linux**: `ClaudeCodeHistory-1.0.0.deb`
 
 ### Building from Source
 
