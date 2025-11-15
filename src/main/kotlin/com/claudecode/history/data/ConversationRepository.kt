@@ -95,6 +95,10 @@ class ConversationRepository {
             val escapedFilePath = filters.filePath.replace("'", "''")
             conditions.add("c.file_path LIKE '%$escapedFilePath%'")
         }
+        if (filters.model != null) {
+            val escapedModel = filters.model.replace("'", "''")
+            conditions.add("c.metadata LIKE '%\"model\":\"$escapedModel\"%'")
+        }
 
         val whereClause = if (conditions.isNotEmpty()) {
             "AND ${conditions.joinToString(" AND ")}"
@@ -178,6 +182,23 @@ class ConversationRepository {
             .sorted()
     }
 
+    fun getAllModels(): List<String> = transaction {
+        val models = mutableSetOf<String>()
+        Conversations.select(Conversations.metadata)
+            .where { Conversations.metadata.isNotNull() }
+            .forEach { row ->
+                row[Conversations.metadata]?.let { metadataJson ->
+                    try {
+                        val metadata = Json.decodeFromString<ConversationMetadata>(metadataJson)
+                        metadata.model?.let { models.add(it) }
+                    } catch (e: Exception) {
+                        // Skip malformed metadata
+                    }
+                }
+            }
+        models.sorted()
+    }
+
     fun getLatestConversationByProject(projectPath: String): Conversation? = transaction {
         Conversations.selectAll()
             .where { Conversations.projectPath eq projectPath }
@@ -220,6 +241,9 @@ class ConversationRepository {
             filters.filePath?.let { path ->
                 condition = condition and (Conversations.filePath like "%$path%")
             }
+            filters.model?.let { model ->
+                condition = condition and (Conversations.metadata like "%\"model\":\"$model\"%")
+            }
 
             condition
         }
@@ -247,11 +271,12 @@ class ConversationRepository {
             .firstOrNull()
             ?.get(Conversations.timestamp)
 
-        // Calculate token statistics
+        // Calculate token and model statistics
         var totalInputTokens = 0L
         var totalOutputTokens = 0L
         var totalCacheCreationTokens = 0L
         var totalCacheReadTokens = 0L
+        val modelCounts = mutableMapOf<String, Long>()
 
         Conversations.selectAll().forEach { row ->
             row[Conversations.metadata]?.let { metadataJson ->
@@ -263,8 +288,11 @@ class ConversationRepository {
                         totalCacheCreationTokens += usage.cacheCreationInputTokens
                         totalCacheReadTokens += usage.cacheReadInputTokens
                     }
+                    metadata.model?.let { model ->
+                        modelCounts[model] = modelCounts.getOrDefault(model, 0) + 1
+                    }
                 } catch (e: Exception) {
-                    logger.warn(e) { "Failed to parse metadata for token statistics" }
+                    logger.warn(e) { "Failed to parse metadata for statistics" }
                 }
             }
         }
@@ -272,6 +300,7 @@ class ConversationRepository {
         ConversationStatistics(
             totalConversations = total,
             conversationsByRole = byRole,
+            conversationsByModel = modelCounts,
             oldestConversation = oldestTimestamp,
             newestConversation = newestTimestamp,
             totalInputTokens = totalInputTokens,
@@ -350,6 +379,9 @@ class ConversationRepository {
         }
         if (filters.filePath != null) {
             conditions.add("c.file_path LIKE '%${filters.filePath.replace("'", "''")}%'")
+        }
+        if (filters.model != null) {
+            conditions.add("c.metadata LIKE '%\"model\":\"${filters.model.replace("'", "''")}\"%'")
         }
 
         val whereClause = if (conditions.isNotEmpty()) {
@@ -459,6 +491,7 @@ class ConversationRepository {
 data class ConversationStatistics(
     val totalConversations: Long,
     val conversationsByRole: Map<String, Long>,
+    val conversationsByModel: Map<String, Long> = emptyMap(),
     val oldestConversation: Instant?,
     val newestConversation: Instant?,
     val totalInputTokens: Long = 0,

@@ -70,11 +70,12 @@ data class SearchFilters(
     val dateTo: Instant? = null,
     val role: MessageRole? = null,
     val language: String? = null,
-    val filePath: String? = null
+    val filePath: String? = null,
+    val model: String? = null
 ) {
     fun hasActiveFilters(): Boolean {
         return projectPath != null || dateFrom != null || dateTo != null ||
-               role != null || language != null || filePath != null
+               role != null || language != null || filePath != null || model != null
     }
 }
 

@@ -95,6 +95,49 @@ fun StatisticsScreen(searchService: SearchService) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Conversations by Model
+                if (stats.conversationsByModel.isNotEmpty()) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                "Conversations by Model",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            stats.conversationsByModel.entries.sortedByDescending { it.value }.forEach { (model, count) ->
+                                val displayName = when {
+                                    model.contains("claude-sonnet-4-5") -> "Sonnet 4.5"
+                                    model.contains("claude-sonnet-4") -> "Sonnet 4"
+                                    model.contains("claude-sonnet-3-5") -> "Sonnet 3.5"
+                                    model.contains("claude-opus") -> "Opus"
+                                    model.contains("claude-haiku") -> "Haiku"
+                                    else -> model.take(30)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        displayName,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                    Text(
+                                        count.toString(),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                if (model != stats.conversationsByModel.keys.last()) {
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
                 // Token Usage Statistics
                 if (stats.totalTokens > 0) {
                     Card(modifier = Modifier.fillMaxWidth()) {

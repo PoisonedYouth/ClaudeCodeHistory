@@ -123,6 +123,10 @@ class SearchService(
         repository.getAllLanguages()
     }
 
+    suspend fun getAllModels(): List<String> = withContext(Dispatchers.IO) {
+        repository.getAllModels()
+    }
+
     suspend fun getStatistics(): ConversationStatistics = withContext(Dispatchers.IO) {
         repository.getStatistics()
     }

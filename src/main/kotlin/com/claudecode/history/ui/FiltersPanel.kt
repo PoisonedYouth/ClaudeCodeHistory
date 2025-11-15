@@ -30,6 +30,7 @@ fun FiltersPanel(
     modifier: Modifier = Modifier
 ) {
     var availableProjects by remember { mutableStateOf<List<String>>(emptyList()) }
+    var availableModels by remember { mutableStateOf<List<String>>(emptyList()) }
     var showDateFromPicker by remember { mutableStateOf(false) }
     var showDateToPicker by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -37,6 +38,7 @@ fun FiltersPanel(
     LaunchedEffect(Unit) {
         scope.launch {
             availableProjects = searchService.getAllProjects()
+            availableModels = searchService.getAllModels()
         }
     }
 
@@ -262,6 +264,74 @@ fun FiltersPanel(
                         }
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Second row of filters
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                // Model filter
+                var expandedModels by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = expandedModels,
+                    onExpandedChange = { expandedModels = it },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    OutlinedTextField(
+                        value = filters.model?.let { model ->
+                            when {
+                                model.contains("claude-sonnet-4-5") -> "Sonnet 4.5"
+                                model.contains("claude-sonnet-4") -> "Sonnet 4"
+                                model.contains("claude-sonnet-3-5") -> "Sonnet 3.5"
+                                model.contains("claude-opus") -> "Opus"
+                                model.contains("claude-haiku") -> "Haiku"
+                                else -> model.take(20)
+                            }
+                        } ?: "All Models",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Model", style = MaterialTheme.typography.labelSmall) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedModels) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expandedModels,
+                        onDismissRequest = { expandedModels = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("All Models") },
+                            onClick = {
+                                onFiltersChange(filters.copy(model = null))
+                                expandedModels = false
+                            }
+                        )
+                        availableModels.forEach { model ->
+                            val displayName = when {
+                                model.contains("claude-sonnet-4-5") -> "Sonnet 4.5"
+                                model.contains("claude-sonnet-4") -> "Sonnet 4"
+                                model.contains("claude-sonnet-3-5") -> "Sonnet 3.5"
+                                model.contains("claude-opus") -> "Opus"
+                                model.contains("claude-haiku") -> "Haiku"
+                                else -> model.take(20)
+                            }
+                            DropdownMenuItem(
+                                text = { Text(displayName) },
+                                onClick = {
+                                    onFiltersChange(filters.copy(model = model))
+                                    expandedModels = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Placeholder for future filters (language, file path, etc.)
+                Spacer(modifier = Modifier.weight(3f))
             }
 
             // Quick date filters in a row
