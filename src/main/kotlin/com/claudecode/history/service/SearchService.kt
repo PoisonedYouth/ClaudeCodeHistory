@@ -2,9 +2,7 @@ package com.claudecode.history.service
 
 import com.claudecode.history.data.ConversationRepository
 import com.claudecode.history.data.ConversationStatistics
-import com.claudecode.history.domain.Conversation
-import com.claudecode.history.domain.SearchFilters
-import com.claudecode.history.domain.SearchResult
+import com.claudecode.history.domain.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
@@ -13,12 +11,14 @@ import mu.KotlinLogging
 private val logger = KotlinLogging.logger {}
 
 class SearchService(
-    private val repository: ConversationRepository
+    private val repository: ConversationRepository,
+    private val embeddingService: EmbeddingService
 ) {
 
     suspend fun search(
         query: String,
         filters: SearchFilters = SearchFilters(),
+        mode: SearchMode = SearchMode.HYBRID,
         limit: Int = 100
     ): List<SearchResult> = withContext(Dispatchers.IO) {
         if (query.isBlank()) {
@@ -41,8 +41,74 @@ class SearchService(
             }
         }
 
-        logger.info { "Searching for: $query with filters: $filters" }
-        repository.search(query, filters, limit)
+        when (mode) {
+            SearchMode.KEYWORD -> {
+                logger.info { "Keyword search for: $query" }
+                repository.search(query, filters, limit)
+            }
+            SearchMode.SEMANTIC -> {
+                logger.info { "Semantic search for: $query" }
+                performSemanticSearch(query, filters, limit)
+            }
+            SearchMode.HYBRID -> {
+                logger.info { "Hybrid search for: $query" }
+                performHybridSearch(query, filters, limit)
+            }
+        }
+    }
+
+    private suspend fun performSemanticSearch(
+        query: String,
+        filters: SearchFilters,
+        limit: Int
+    ): List<SearchResult> {
+        return try {
+            val queryEmbedding = embeddingService.generateQueryEmbedding(query)
+            repository.vectorSearch(queryEmbedding, filters, limit)
+        } catch (e: OllamaException) {
+            logger.warn { "Semantic search failed, Ollama not available: ${e.message}" }
+            logger.info { "Falling back to keyword search" }
+            repository.search(query, filters, limit)
+        }
+    }
+
+    private suspend fun performHybridSearch(
+        query: String,
+        filters: SearchFilters,
+        limit: Int
+    ): List<SearchResult> {
+        return try {
+            val queryEmbedding = embeddingService.generateQueryEmbedding(query)
+            repository.hybridSearch(query, queryEmbedding, filters, limit)
+        } catch (e: OllamaException) {
+            logger.warn { "Hybrid search failed, Ollama not available: ${e.message}" }
+            logger.info { "Falling back to keyword search" }
+            repository.search(query, filters, limit)
+        }
+    }
+
+    /**
+     * Find conversations similar to the given conversation
+     * @param conversation The conversation to find similar ones for
+     * @param limit Maximum number of similar conversations to return
+     */
+    suspend fun findSimilar(conversation: Conversation, limit: Int = 10): List<SearchResult> = withContext(Dispatchers.IO) {
+        try {
+            val embedding = embeddingService.getEmbedding(conversation.id)
+                ?: run {
+                    // Generate embedding if it doesn't exist
+                    embeddingService.generateAndStore(conversation.id, conversation.content)
+                    embeddingService.getEmbedding(conversation.id)
+                }
+
+            embedding?.let {
+                repository.vectorSearch(it, limit = limit)
+                    .filter { result -> result.conversation.id != conversation.id } // Exclude the source conversation
+            } ?: emptyList()
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to find similar conversations for ${conversation.id}" }
+            emptyList()
+        }
     }
 
     suspend fun getConversationsBySession(sessionId: String): List<Conversation> = withContext(Dispatchers.IO) {

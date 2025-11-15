@@ -9,16 +9,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.claudecode.history.service.EmbeddingService
 import com.claudecode.history.service.IndexingService
 import kotlinx.coroutines.launch
 import java.io.File
 
 @Composable
-fun SettingsScreen(indexingService: IndexingService) {
+fun SettingsScreen(indexingService: IndexingService, embeddingService: EmbeddingService) {
     val scrollState = rememberScrollState()
     var isIndexing by remember { mutableStateOf(false) }
     var indexingResult by remember { mutableStateOf<String?>(null) }
+    var isGeneratingEmbeddings by remember { mutableStateOf(false) }
+    var embeddingResult by remember { mutableStateOf<String?>(null) }
+    var ollamaStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    // Check Ollama status on load
+    LaunchedEffect(Unit) {
+        ollamaStatus = if (embeddingService.isOllamaAvailable()) {
+            "Connected"
+        } else {
+            "Not Available"
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -85,6 +98,95 @@ fun SettingsScreen(indexingService: IndexingService) {
                 }
 
                 indexingResult?.let { result ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        result,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (result.startsWith("Error")) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Semantic Search / Embeddings section
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Semantic Search (Ollama)",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        ollamaStatus ?: "Checking...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = when (ollamaStatus) {
+                            "Connected" -> MaterialTheme.colorScheme.primary
+                            "Not Available" -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    "Generate embeddings for semantic search. Requires Ollama with nomic-embed-text model installed.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isGeneratingEmbeddings = true
+                            embeddingResult = null
+                            try {
+                                val stats = embeddingService.getEmbeddingStats()
+                                if (stats.conversationsWithoutEmbeddings == 0) {
+                                    embeddingResult = "All ${stats.totalConversations} conversations already have embeddings"
+                                } else {
+                                    embeddingResult = "Generating embeddings for ${stats.conversationsWithoutEmbeddings} conversations..."
+                                    val generated = embeddingService.generateMissingEmbeddings { current, total ->
+                                        embeddingResult = "Generating embeddings: $current / $total"
+                                    }
+                                    embeddingResult = "Successfully generated $generated embeddings"
+                                }
+                            } catch (e: Exception) {
+                                embeddingResult = "Error: ${e.message}"
+                            } finally {
+                                isGeneratingEmbeddings = false
+                            }
+                        }
+                    },
+                    enabled = !isGeneratingEmbeddings && ollamaStatus == "Connected",
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isGeneratingEmbeddings) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Generating...")
+                    } else {
+                        Text("Generate Missing Embeddings")
+                    }
+                }
+
+                embeddingResult?.let { result ->
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         result,

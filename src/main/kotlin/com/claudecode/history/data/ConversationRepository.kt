@@ -1,6 +1,7 @@
 package com.claudecode.history.data
 
 import com.claudecode.history.domain.*
+import com.claudecode.history.util.VectorUtils
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
@@ -263,6 +264,170 @@ class ConversationRepository {
         content = row[Conversations.content],
         metadata = row[Conversations.metadata]?.let { Json.decodeFromString<ConversationMetadata>(it) }
     )
+
+    /**
+     * Get conversations that don't have embeddings yet
+     */
+    fun getConversationsWithoutEmbeddings(): List<Conversation> = transaction {
+        val sql = """
+            SELECT c.*
+            FROM conversations c
+            LEFT JOIN embeddings e ON c.id = e.conversation_id
+            WHERE e.id IS NULL
+            ORDER BY c.timestamp DESC
+        """.trimIndent()
+
+        val statement = TransactionManager.current().connection.prepareStatement(sql, false)
+        val resultSet = statement.executeQuery()
+
+        val conversations = mutableListOf<Conversation>()
+        while (resultSet.next()) {
+            conversations.add(parseConversationFromResultSet(resultSet))
+        }
+
+        resultSet.close()
+        statement.closeIfPossible()
+
+        conversations
+    }
+
+    /**
+     * Perform vector similarity search
+     * @param queryEmbedding The embedding vector to search for
+     * @param filters Optional filters to apply
+     * @param limit Maximum number of results
+     * @return List of SearchResult ordered by similarity (most similar first)
+     */
+    fun vectorSearch(
+        queryEmbedding: FloatArray,
+        filters: SearchFilters = SearchFilters(),
+        limit: Int = 100
+    ): List<SearchResult> = transaction {
+        val results = mutableListOf<SearchResult>()
+
+        // Build filter conditions
+        val conditions = mutableListOf<String>()
+        if (filters.projectPath != null) {
+            conditions.add("c.project_path LIKE '%${filters.projectPath.replace("'", "''")}%'")
+        }
+        if (filters.dateFrom != null) {
+            conditions.add("c.timestamp >= ${filters.dateFrom.toEpochMilliseconds()}")
+        }
+        if (filters.dateTo != null) {
+            conditions.add("c.timestamp <= ${filters.dateTo.toEpochMilliseconds()}")
+        }
+        if (filters.role != null) {
+            conditions.add("c.role = '${filters.role.name}'")
+        }
+        if (filters.language != null) {
+            conditions.add("c.language = '${filters.language.replace("'", "''")}'")
+        }
+        if (filters.filePath != null) {
+            conditions.add("c.file_path LIKE '%${filters.filePath.replace("'", "''")}%'")
+        }
+
+        val whereClause = if (conditions.isNotEmpty()) {
+            "WHERE ${conditions.joinToString(" AND ")}"
+        } else ""
+
+        val sql = """
+            SELECT c.id, c.session_id, c.project_path, c.timestamp, c.role, c.content, c.metadata,
+                   e.embedding
+            FROM conversations c
+            INNER JOIN embeddings e ON c.id = e.conversation_id
+            $whereClause
+        """.trimIndent()
+
+        val statement = TransactionManager.current().connection.prepareStatement(sql, false)
+        val resultSet = statement.executeQuery()
+
+        val similarities = mutableListOf<Pair<Conversation, Double>>()
+        while (resultSet.next()) {
+            val conv = parseConversationFromResultSet(resultSet)
+            val embeddingBytes = resultSet.getBytes("embedding")
+            val embedding = VectorUtils.bytesToFloatArray(embeddingBytes)
+
+            val similarity = VectorUtils.cosineSimilarity(queryEmbedding, embedding)
+            similarities.add(conv to similarity)
+        }
+
+        resultSet.close()
+        statement.closeIfPossible()
+
+        // Sort by similarity (highest first) and take top results
+        val topResults = similarities
+            .sortedByDescending { it.second }
+            .take(limit)
+
+        topResults.forEach { (conv, similarity) ->
+            val snippet = conv.content.take(200).let {
+                if (conv.content.length > 200) "$it..." else it
+            }
+            results.add(SearchResult(conv, snippet, similarity))
+        }
+
+        logger.info { "Vector search returned ${results.size} results" }
+        results
+    }
+
+    /**
+     * Hybrid search combining FTS5 keyword search and vector similarity using Reciprocal Rank Fusion
+     * @param query Keyword query for FTS5 search
+     * @param queryEmbedding Embedding vector for semantic search
+     * @param filters Optional filters
+     * @param limit Maximum number of results
+     * @return Combined and re-ranked search results
+     */
+    fun hybridSearch(
+        query: String,
+        queryEmbedding: FloatArray,
+        filters: SearchFilters = SearchFilters(),
+        limit: Int = 100
+    ): List<SearchResult> = transaction {
+        // Get results from both search methods
+        val fts5Results = search(query, filters, limit = 50)
+        val vectorResults = vectorSearch(queryEmbedding, filters, limit = 50)
+
+        // Reciprocal Rank Fusion algorithm
+        val k = 60.0  // RRF constant
+        val combinedScores = mutableMapOf<Int, Double>()
+        val conversationMap = mutableMapOf<Int, Conversation>()
+        val snippetMap = mutableMapOf<Int, String>()
+
+        // Add FTS5 scores
+        fts5Results.forEachIndexed { rank, result ->
+            val rrf = 1.0 / (k + rank + 1)
+            combinedScores[result.conversation.id] = rrf
+            conversationMap[result.conversation.id] = result.conversation
+            snippetMap[result.conversation.id] = result.snippet
+        }
+
+        // Add vector scores
+        vectorResults.forEachIndexed { rank, result ->
+            val rrf = 1.0 / (k + rank + 1)
+            val currentScore = combinedScores.getOrDefault(result.conversation.id, 0.0)
+            combinedScores[result.conversation.id] = currentScore + rrf
+            conversationMap[result.conversation.id] = result.conversation
+            if (!snippetMap.containsKey(result.conversation.id)) {
+                snippetMap[result.conversation.id] = result.snippet
+            }
+        }
+
+        // Sort by combined score and create results
+        val results = combinedScores.entries
+            .sortedByDescending { it.value }
+            .take(limit)
+            .map { (convId, score) ->
+                SearchResult(
+                    conversation = conversationMap[convId]!!,
+                    snippet = snippetMap[convId]!!,
+                    rank = score
+                )
+            }
+
+        logger.info { "Hybrid search returned ${results.size} results (FTS5: ${fts5Results.size}, Vector: ${vectorResults.size})" }
+        results
+    }
 }
 
 data class ConversationStatistics(
