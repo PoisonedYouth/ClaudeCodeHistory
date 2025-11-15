@@ -1,63 +1,142 @@
 package com.claudecode.history.domain
 
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
 import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
 import kotlin.test.Test
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.days
 
 class SearchFiltersTest {
 
     @Test
     fun `hasActiveFilters returns false when no filters are set`() {
+        // Given
         val filters = SearchFilters()
-        assertFalse(filters.hasActiveFilters())
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeFalse()
     }
 
     @Test
     fun `hasActiveFilters returns true when projectPath is set`() {
+        // Given
         val filters = SearchFilters(projectPath = "/some/path")
-        assertTrue(filters.hasActiveFilters())
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeTrue()
     }
 
     @Test
     fun `hasActiveFilters returns true when dateFrom is set`() {
+        // Given
         val filters = SearchFilters(dateFrom = Clock.System.now())
-        assertTrue(filters.hasActiveFilters())
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeTrue()
     }
 
     @Test
     fun `hasActiveFilters returns true when dateTo is set`() {
+        // Given
         val filters = SearchFilters(dateTo = Clock.System.now())
-        assertTrue(filters.hasActiveFilters())
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeTrue()
     }
 
     @Test
     fun `hasActiveFilters returns true when role is set`() {
+        // Given
         val filters = SearchFilters(role = MessageRole.USER)
-        assertTrue(filters.hasActiveFilters())
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeTrue()
     }
 
     @Test
     fun `hasActiveFilters returns true when language is set`() {
+        // Given
         val filters = SearchFilters(language = "kotlin")
-        assertTrue(filters.hasActiveFilters())
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeTrue()
     }
 
     @Test
     fun `hasActiveFilters returns true when filePath is set`() {
+        // Given
         val filters = SearchFilters(filePath = "Main.kt")
-        assertTrue(filters.hasActiveFilters())
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeTrue()
+    }
+
+    @Test
+    fun `hasActiveFilters returns true when model is set`() {
+        // Given
+        val filters = SearchFilters(model = "claude-sonnet-4-5")
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeTrue()
     }
 
     @Test
     fun `hasActiveFilters returns true when multiple filters are set`() {
+        // Given
         val filters = SearchFilters(
             projectPath = "/some/path",
             dateFrom = Clock.System.now() - 7.days,
             role = MessageRole.ASSISTANT
         )
-        assertTrue(filters.hasActiveFilters())
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeTrue()
+    }
+
+    @Test
+    fun `hasActiveFilters returns true when all filters are set`() {
+        // Given
+        val filters = SearchFilters(
+            projectPath = "/some/path",
+            dateFrom = Clock.System.now() - 7.days,
+            dateTo = Clock.System.now(),
+            role = MessageRole.USER,
+            language = "kotlin",
+            filePath = "Main.kt",
+            model = "claude-sonnet-4-5"
+        )
+
+        // When
+        val hasActiveFilters = filters.hasActiveFilters()
+
+        // Then
+        hasActiveFilters.shouldBeTrue()
     }
 }
