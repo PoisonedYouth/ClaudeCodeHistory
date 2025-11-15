@@ -39,6 +39,12 @@ class OllamaClient(
      */
     suspend fun generateEmbedding(text: String): FloatArray {
         return try {
+            // Validate input
+            if (text.isBlank()) {
+                logger.warn { "Attempted to generate embedding for empty text" }
+                throw OllamaException("Cannot generate embedding for empty text")
+            }
+
             logger.debug { "Generating embedding for text of length ${text.length}" }
 
             val response: HttpResponse = client.post("$baseUrl/api/embed") {
@@ -52,7 +58,8 @@ class OllamaClient(
             if (response.status.isSuccess()) {
                 val embedResponse = response.body<EmbedResponse>()
                 if (embedResponse.embeddings.isEmpty()) {
-                    logger.error { "Ollama returned empty embeddings list" }
+                    logger.error { "Ollama returned empty embeddings list for text length ${text.length}" }
+                    logger.error { "Text preview: ${text.take(100)}" }
                     throw OllamaException("Ollama returned empty embeddings. Is the model '$model' installed? Run: ollama pull $model")
                 }
                 logger.debug { "Successfully generated embedding with ${embedResponse.embeddings.first().size} dimensions" }

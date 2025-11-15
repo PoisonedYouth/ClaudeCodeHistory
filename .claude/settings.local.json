@@ -16,7 +16,18 @@
       "Bash(git push:*)",
       "Bash(mkdir:*)",
       "Bash(gh repo edit:*)",
-      "Bash(gh repo view:*)"
+      "Bash(gh repo view:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git tag:*)",
+      "Bash(gh release create v0.0.1 --title \"v0.0.1 - Initial Release\" --notes \"$(cat <<''EOF''\n## Initial Release\n\nFirst public release of Claude Code History - a desktop application for searching and browsing your Claude Code conversation history.\n\n### Features\n\n- **Full-text Search**: Search through all your Claude Code conversations with advanced filtering\n- **Auto-Indexing**: Automatically indexes existing conversations and watches for new ones in real-time\n- **Rich Metadata**: Captures tool usage, file paths, programming languages, and model information\n- **Multi-Platform Support**: Available for macOS, Windows, and Linux\n- **Search Filters**: Filter by project, date range, programming language, message role, and file paths\n- **Statistics Dashboard**: Analytics on your Claude Code usage patterns\n- **Conversation Timeline**: Browse conversations chronologically\n\n### Installation\n\nDownload the appropriate installer for your platform from the assets below, or build from source following the instructions in the README.\n\n### Tech Stack\n\n- Kotlin + Compose Desktop\n- SQLite with Exposed ORM\n- Material 3 design\n\n### What''s Next\n\nSee the [README](https://github.com/PoisonedYouth/ClaudeCodeHistory/blob/main/README.md) for complete documentation and usage instructions.\n\n---\n\n**Note**: This is a community project and is not officially affiliated with Anthropic.\nEOF\n)\")",
+      "Bash(gh run:*)",
+      "Bash(gh release delete:*)",
+      "Bash(gh release create v1.0.0 --title \"v1.0.0 - Initial Release\" --notes \"$(cat <<''EOF''\n## Initial Release\n\nFirst public release of Claude Code History - a desktop application for searching and browsing your Claude Code conversation history.\n\n### Features\n\n- **Full-text Search**: Search through all your Claude Code conversations with advanced filtering\n- **Auto-Indexing**: Automatically indexes existing conversations and watches for new ones in real-time\n- **Rich Metadata**: Captures tool usage, file paths, programming languages, and model information\n- **Multi-Platform Support**: Available for macOS, Windows, and Linux\n- **Search Filters**: Filter by project, date range, programming language, message role, and file paths\n- **Statistics Dashboard**: Analytics on your Claude Code usage patterns\n- **Conversation Timeline**: Browse conversations chronologically\n\n### Installation\n\nDownload the appropriate installer for your platform from the assets below, or build from source following the instructions in the README.\n\n### Tech Stack\n\n- Kotlin + Compose Desktop\n- SQLite with Exposed ORM\n- Material 3 design\n\n### What''s Next\n\nSee the [README](https://github.com/PoisonedYouth/ClaudeCodeHistory/blob/main/README.md) for complete documentation and usage instructions.\n\n---\n\n**Note**: This is a community project and is not officially affiliated with Anthropic.\nEOF\n)\" --draft)",
+      "Bash(gh release create:*)",
+      "Bash(gh release view:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

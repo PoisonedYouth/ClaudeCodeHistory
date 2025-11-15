@@ -31,6 +31,17 @@ class EmbeddingService(
      */
     suspend fun generateAndStore(conversationId: Int, content: String): Boolean {
         return try {
+            // Validate content
+            if (content.isBlank()) {
+                logger.debug { "Skipping embedding for conversation $conversationId: empty content" }
+                return true // Consider empty content as "success" to avoid retrying
+            }
+
+            if (content.length < 10) {
+                logger.debug { "Skipping embedding for conversation $conversationId: content too short (${content.length} chars)" }
+                return true
+            }
+
             // Check if embedding already exists
             val exists = withContext(Dispatchers.IO) {
                 transaction {
@@ -44,7 +55,7 @@ class EmbeddingService(
             }
 
             // Generate embedding
-            logger.debug { "Generating embedding for conversation $conversationId" }
+            logger.debug { "Generating embedding for conversation $conversationId (${content.length} chars)" }
             val embedding = ollamaClient.generateEmbedding(content)
 
             // Normalize vector
