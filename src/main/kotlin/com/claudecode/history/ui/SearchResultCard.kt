@@ -102,7 +102,8 @@ fun SearchResultCard(
             conversation.metadata?.let { metadata ->
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     metadata.language?.let { language ->
                         AssistChip(
@@ -132,6 +133,35 @@ fun SearchResultCard(
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             }
+                        )
+                    }
+
+                    metadata.usage?.let { usage ->
+                        if (usage.totalTokens > 0) {
+                            AssistChip(
+                                onClick = { },
+                                label = {
+                                    Text(
+                                        "${String.format("%,d", usage.totalTokens)} tokens (\$${String.format("%.4f", usage.estimatedCost)})",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    metadata.model?.let { model ->
+                        val displayName = when {
+                            model.contains("claude-sonnet-4-5") -> "Sonnet 4.5"
+                            model.contains("claude-sonnet-4") -> "Sonnet 4"
+                            model.contains("claude-sonnet-3-5") -> "Sonnet 3.5"
+                            model.contains("claude-opus") -> "Opus"
+                            model.contains("claude-haiku") -> "Haiku"
+                            else -> model.take(15)
+                        }
+                        AssistChip(
+                            onClick = { },
+                            label = { Text(displayName, style = MaterialTheme.typography.labelSmall) }
                         )
                     }
                 }

@@ -51,6 +51,10 @@ class OllamaClient(
 
             if (response.status.isSuccess()) {
                 val embedResponse = response.body<EmbedResponse>()
+                if (embedResponse.embeddings.isEmpty()) {
+                    logger.error { "Ollama returned empty embeddings list" }
+                    throw OllamaException("Ollama returned empty embeddings. Is the model '$model' installed? Run: ollama pull $model")
+                }
                 logger.debug { "Successfully generated embedding with ${embedResponse.embeddings.first().size} dimensions" }
                 embedResponse.embeddings.first()
             } else {
@@ -58,6 +62,9 @@ class OllamaClient(
                 logger.error { "Ollama API error: ${response.status} - $error" }
                 throw OllamaException("Failed to generate embedding: ${response.status}")
             }
+        } catch (e: OllamaException) {
+            // Re-throw OllamaExceptions as-is
+            throw e
         } catch (e: Exception) {
             logger.error(e) { "Failed to connect to Ollama at $baseUrl" }
             throw OllamaException("Ollama connection failed. Is Ollama running? Visit https://ollama.com for installation.", e)

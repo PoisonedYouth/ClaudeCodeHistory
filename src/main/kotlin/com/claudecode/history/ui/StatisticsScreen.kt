@@ -95,6 +95,130 @@ fun StatisticsScreen(searchService: SearchService) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Token Usage Statistics
+                if (stats.totalTokens > 0) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                "Token Usage & Cost Estimation",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Total tokens
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Total Tokens",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                )
+                                Text(
+                                    String.format("%,d", stats.totalTokens),
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                            // Input tokens
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Input Tokens",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    String.format("%,d", stats.totalInputTokens),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+
+                            // Output tokens
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Output Tokens",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    String.format("%,d", stats.totalOutputTokens),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+
+                            // Cache creation tokens
+                            if (stats.totalCacheCreationTokens > 0) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        "Cache Writes",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        String.format("%,d", stats.totalCacheCreationTokens),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+
+                            // Cache read tokens
+                            if (stats.totalCacheReadTokens > 0) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        "Cache Reads",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        String.format("%,d", stats.totalCacheReadTokens),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            // Estimated cost
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Estimated Total Cost",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                )
+                                Text(
+                                    "$${String.format("%.4f", stats.estimatedTotalCost)}",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                "Based on Claude 3.5 Sonnet pricing: Input \$3/M, Output \$15/M, Cache Write \$3.75/M, Cache Read \$0.30/M",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
                 // Date range
                 Row(
                     modifier = Modifier.fillMaxWidth(),

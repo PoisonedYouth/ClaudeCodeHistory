@@ -28,7 +28,17 @@ data class ClaudeEvent(
 @Serializable
 data class ClaudeMessage(
     val role: String,
-    val content: JsonElement
+    val content: JsonElement,
+    val model: String? = null,
+    val usage: ClaudeUsage? = null
+)
+
+@Serializable
+data class ClaudeUsage(
+    val input_tokens: Int? = null,
+    val output_tokens: Int? = null,
+    val cache_creation_input_tokens: Int? = null,
+    val cache_read_input_tokens: Int? = null
 )
 
 class ClaudeConversationParser {
@@ -86,7 +96,7 @@ class ClaudeConversationParser {
             }
         }
 
-        val (content, metadata) = extractContentAndMetadata(message.content)
+        val (content, metadata) = extractContentAndMetadata(message.content, message.model, message.usage)
 
         return Conversation(
             id = 0, // Will be set by database
@@ -99,7 +109,11 @@ class ClaudeConversationParser {
         )
     }
 
-    private fun extractContentAndMetadata(contentElement: JsonElement): Pair<String, ConversationMetadata?> {
+    private fun extractContentAndMetadata(
+        contentElement: JsonElement,
+        model: String? = null,
+        usage: ClaudeUsage? = null
+    ): Pair<String, ConversationMetadata?> {
         val content = StringBuilder()
         val toolUses = mutableListOf<ToolUse>()
         val filePaths = mutableListOf<String>()
@@ -155,11 +169,23 @@ class ClaudeConversationParser {
             }
         }
 
-        val metadata = if (toolUses.isNotEmpty() || filePaths.isNotEmpty() || detectedLanguage != null) {
+        // Convert ClaudeUsage to TokenUsage
+        val tokenUsage = usage?.let {
+            com.claudecode.history.domain.TokenUsage(
+                inputTokens = it.input_tokens ?: 0,
+                outputTokens = it.output_tokens ?: 0,
+                cacheCreationInputTokens = it.cache_creation_input_tokens ?: 0,
+                cacheReadInputTokens = it.cache_read_input_tokens ?: 0
+            )
+        }
+
+        val metadata = if (toolUses.isNotEmpty() || filePaths.isNotEmpty() || detectedLanguage != null || model != null || tokenUsage != null) {
             ConversationMetadata(
                 toolUses = toolUses,
                 filePaths = filePaths.distinct(),
-                language = detectedLanguage
+                language = detectedLanguage,
+                model = model,
+                usage = tokenUsage
             )
         } else null
 

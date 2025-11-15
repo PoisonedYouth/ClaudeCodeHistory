@@ -247,11 +247,37 @@ class ConversationRepository {
             .firstOrNull()
             ?.get(Conversations.timestamp)
 
+        // Calculate token statistics
+        var totalInputTokens = 0L
+        var totalOutputTokens = 0L
+        var totalCacheCreationTokens = 0L
+        var totalCacheReadTokens = 0L
+
+        Conversations.selectAll().forEach { row ->
+            row[Conversations.metadata]?.let { metadataJson ->
+                try {
+                    val metadata = Json.decodeFromString<ConversationMetadata>(metadataJson)
+                    metadata.usage?.let { usage ->
+                        totalInputTokens += usage.inputTokens
+                        totalOutputTokens += usage.outputTokens
+                        totalCacheCreationTokens += usage.cacheCreationInputTokens
+                        totalCacheReadTokens += usage.cacheReadInputTokens
+                    }
+                } catch (e: Exception) {
+                    logger.warn(e) { "Failed to parse metadata for token statistics" }
+                }
+            }
+        }
+
         ConversationStatistics(
             totalConversations = total,
             conversationsByRole = byRole,
             oldestConversation = oldestTimestamp,
-            newestConversation = newestTimestamp
+            newestConversation = newestTimestamp,
+            totalInputTokens = totalInputTokens,
+            totalOutputTokens = totalOutputTokens,
+            totalCacheCreationTokens = totalCacheCreationTokens,
+            totalCacheReadTokens = totalCacheReadTokens
         )
     }
 
@@ -434,5 +460,21 @@ data class ConversationStatistics(
     val totalConversations: Long,
     val conversationsByRole: Map<String, Long>,
     val oldestConversation: Instant?,
-    val newestConversation: Instant?
-)
+    val newestConversation: Instant?,
+    val totalInputTokens: Long = 0,
+    val totalOutputTokens: Long = 0,
+    val totalCacheCreationTokens: Long = 0,
+    val totalCacheReadTokens: Long = 0
+) {
+    val totalTokens: Long
+        get() = totalInputTokens + totalOutputTokens + totalCacheCreationTokens + totalCacheReadTokens
+
+    val estimatedTotalCost: Double
+        get() {
+            val inputCost = (totalInputTokens / 1_000_000.0) * 3.0
+            val outputCost = (totalOutputTokens / 1_000_000.0) * 15.0
+            val cacheWriteCost = (totalCacheCreationTokens / 1_000_000.0) * 3.75
+            val cacheReadCost = (totalCacheReadTokens / 1_000_000.0) * 0.30
+            return inputCost + outputCost + cacheWriteCost + cacheReadCost
+        }
+}
