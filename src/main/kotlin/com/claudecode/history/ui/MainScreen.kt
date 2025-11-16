@@ -4,14 +4,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import com.claudecode.history.config.AppConfig
 import com.claudecode.history.data.ConversationRepository
 import com.claudecode.history.service.*
 
 @Composable
-fun MainScreen() {
+fun MainScreen(config: AppConfig = AppConfig()) {
     val repository = remember { ConversationRepository() }
-    val ollamaClient = remember { OllamaClient() }
-    val embeddingService = remember { EmbeddingService(ollamaClient, repository) }
+    val ollamaClient = remember { OllamaClient(config.ollama) }
+    val embeddingService = remember { EmbeddingService(ollamaClient, repository, config.embedding) }
     val searchService = remember { SearchService(repository, embeddingService) }
     val parser = remember { ClaudeConversationParser() }
     val indexingService = remember { IndexingService(repository, parser) }

@@ -1,5 +1,6 @@
 package com.claudecode.history.service
 
+import com.claudecode.history.config.EmbeddingConfig
 import com.claudecode.history.data.ConversationRepository
 import com.claudecode.history.data.Embeddings
 import com.claudecode.history.util.VectorUtils
@@ -20,7 +21,8 @@ private val logger = KotlinLogging.logger {}
  */
 class EmbeddingService(
     private val ollamaClient: OllamaClient,
-    private val repository: ConversationRepository
+    private val repository: ConversationRepository,
+    private val config: EmbeddingConfig = EmbeddingConfig()
 ) {
 
     /**
@@ -114,9 +116,10 @@ class EmbeddingService(
 
             onProgress(index + 1, total)
 
-            // Add small delay to avoid overwhelming Ollama
-            if ((index + 1) % 10 == 0) {
-                kotlinx.coroutines.delay(100)
+            // Add configurable delay after each batch to avoid overwhelming Ollama
+            if ((index + 1) % config.batchSize == 0) {
+                logger.debug { "Processed batch of ${config.batchSize}, waiting ${config.batchDelayMs}ms" }
+                kotlinx.coroutines.delay(config.batchDelayMs)
             }
         }
 

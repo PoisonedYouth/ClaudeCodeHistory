@@ -1,5 +1,6 @@
 package com.claudecode.history.data
 
+import com.claudecode.history.config.DatabaseConfig
 import mu.KotlinLogging
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -10,16 +11,27 @@ import java.io.File
 private val logger = KotlinLogging.logger {}
 
 object DatabaseFactory {
-    private const val DB_NAME = "claude_history.db"
 
-    fun init() {
-        val dbPath = getDatabasePath()
+    fun init(config: DatabaseConfig, dataDirectory: String) {
+        val dbPath = getDatabasePath(config.databaseName, dataDirectory)
         logger.info { "Initializing database at: $dbPath" }
 
-        Database.connect(
-            url = "jdbc:sqlite:$dbPath",
+        // Build JDBC URL with configuration parameters
+        val jdbcUrl = buildString {
+            append("jdbc:sqlite:$dbPath")
+            append("?busy_timeout=${config.busyTimeoutMs}")
+            if (config.enableWalMode) {
+                append("&journal_mode=WAL")
+            }
+        }
+
+        val database = Database.connect(
+            url = jdbcUrl,
             driver = "org.sqlite.JDBC"
         )
+
+        // Configure SQLite PRAGMA statements (outside of any transaction)
+        configureSQLite(config, database)
 
         transaction {
             // Create regular tables
@@ -98,13 +110,26 @@ object DatabaseFactory {
         statement.closeIfPossible()
     }
 
-    private fun getDatabasePath(): String {
-        val userHome = System.getProperty("user.home")
-        val appDir = File(userHome, ".claude-history")
+    private fun configureSQLite(config: DatabaseConfig, database: Database) {
+        logger.info { "Configuring SQLite with synchronous=${config.synchronousMode}, WAL=${config.enableWalMode}" }
+
+        // Execute PRAGMA statements that CAN be set inside transactions
+        transaction {
+            // Note: PRAGMA synchronous cannot be changed inside a transaction
+            // Foreign keys and cache size can be configured here
+            executeSqlStatement("PRAGMA foreign_keys = ON")
+            executeSqlStatement("PRAGMA cache_size = -10000") // 10MB cache
+        }
+
+        logger.info { "SQLite configuration applied successfully" }
+    }
+
+    private fun getDatabasePath(databaseName: String, dataDirectory: String): String {
+        val appDir = File(dataDirectory)
         if (!appDir.exists()) {
             appDir.mkdirs()
             logger.info { "Created application directory: ${appDir.absolutePath}" }
         }
-        return File(appDir, DB_NAME).absolutePath
+        return File(appDir, databaseName).absolutePath
     }
 }
