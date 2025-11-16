@@ -80,92 +80,107 @@ class IndexingService(
 
         if (!claudeDir.exists()) {
             logger.error { "Claude directory not found: $claudeDir" }
+            isWatching.set(false)
             return
         }
 
         try {
-            val watcher = FileSystems.getDefault().newWatchService()
-
-            // Register all existing project directories
-            Files.walk(claudeDir, 1).use { paths ->
-                paths.filter { Files.isDirectory(it) && it != claudeDir }
-                    .forEach { projectDir ->
-                        try {
-                            projectDir.register(
-                                watcher,
-                                StandardWatchEventKinds.ENTRY_CREATE,
-                                StandardWatchEventKinds.ENTRY_MODIFY
-                            )
-                            logger.debug { "Watching directory: $projectDir" }
-                        } catch (e: Exception) {
-                            logger.warn(e) { "Failed to watch directory: $projectDir" }
-                        }
-                    }
-            }
-
-            // Also watch the projects directory itself for new project folders
-            claudeDir.register(
-                watcher,
-                StandardWatchEventKinds.ENTRY_CREATE
-            )
-
-            logger.info { "File watcher initialized, monitoring ${claudeDir}" }
-
-            while (isWatching.get()) {
-                val key = try {
-                    watcher.poll(1, java.util.concurrent.TimeUnit.SECONDS)
-                } catch (e: InterruptedException) {
-                    break
-                }
-
-                if (key == null) continue
-
-                for (event in key.pollEvents()) {
-                    val kind = event.kind()
-
-                    if (kind == StandardWatchEventKinds.OVERFLOW) {
-                        logger.warn { "File system event overflow" }
-                        continue
-                    }
-
-                    @Suppress("UNCHECKED_CAST")
-                    val ev = event as WatchEvent<Path>
-                    val filename = ev.context()
-                    val dir = key.watchable() as Path
-                    val filePath = dir.resolve(filename)
-
-                    when {
-                        // New project directory created
-                        Files.isDirectory(filePath) && dir == claudeDir -> {
+            // Use 'use' to ensure WatchService is always closed
+            FileSystems.getDefault().newWatchService().use { watcher ->
+                // Register all existing project directories
+                Files.walk(claudeDir, 1).use { paths ->
+                    paths.filter { Files.isDirectory(it) && it != claudeDir }
+                        .forEach { projectDir ->
                             try {
-                                filePath.register(
+                                projectDir.register(
                                     watcher,
                                     StandardWatchEventKinds.ENTRY_CREATE,
                                     StandardWatchEventKinds.ENTRY_MODIFY
                                 )
-                                logger.info { "Now watching new project directory: $filePath" }
+                                logger.debug { "Watching directory: $projectDir" }
                             } catch (e: Exception) {
-                                logger.warn(e) { "Failed to watch new directory: $filePath" }
+                                logger.warn(e) { "Failed to watch directory: $projectDir" }
                             }
                         }
+                }
 
-                        // Conversation file created or modified
-                        filePath.isRegularFile() && filename.toString().endsWith(".jsonl") -> {
-                            logger.info { "Detected conversation file change: $filePath" }
-                            indexConversationFile(filePath)
+                // Also watch the projects directory itself for new project folders
+                claudeDir.register(
+                    watcher,
+                    StandardWatchEventKinds.ENTRY_CREATE
+                )
+
+                logger.info { "File watcher initialized, monitoring ${claudeDir}" }
+
+                while (isWatching.get() && currentCoroutineContext().isActive) {
+                    // Check for cancellation
+                    currentCoroutineContext().ensureActive()
+
+                    val key = try {
+                        watcher.poll(1, java.util.concurrent.TimeUnit.SECONDS)
+                    } catch (e: InterruptedException) {
+                        logger.info { "File watcher interrupted" }
+                        break
+                    } catch (e: CancellationException) {
+                        logger.info { "File watcher cancelled" }
+                        throw e
+                    }
+
+                    if (key == null) continue
+
+                    for (event in key.pollEvents()) {
+                        val kind = event.kind()
+
+                        if (kind == StandardWatchEventKinds.OVERFLOW) {
+                            logger.warn { "File system event overflow" }
+                            continue
                         }
+
+                        @Suppress("UNCHECKED_CAST")
+                        val ev = event as WatchEvent<Path>
+                        val filename = ev.context()
+                        val dir = key.watchable() as Path
+                        val filePath = dir.resolve(filename)
+
+                        when {
+                            // New project directory created
+                            Files.isDirectory(filePath) && dir == claudeDir -> {
+                                try {
+                                    filePath.register(
+                                        watcher,
+                                        StandardWatchEventKinds.ENTRY_CREATE,
+                                        StandardWatchEventKinds.ENTRY_MODIFY
+                                    )
+                                    logger.info { "Now watching new project directory: $filePath" }
+                                } catch (e: Exception) {
+                                    logger.warn(e) { "Failed to watch new directory: $filePath" }
+                                }
+                            }
+
+                            // Conversation file created or modified
+                            filePath.isRegularFile() && filename.toString().endsWith(".jsonl") -> {
+                                logger.info { "Detected conversation file change: $filePath" }
+                                indexConversationFile(filePath)
+                            }
+                        }
+                    }
+
+                    if (!key.reset()) {
+                        logger.warn { "Watch key no longer valid" }
+                        break
                     }
                 }
 
-                if (!key.reset()) {
-                    logger.warn { "Watch key no longer valid" }
-                    break
-                }
-            }
-
-            watcher.close()
+                logger.info { "File watcher loop exited normally" }
+            } // WatchService automatically closed here
+        } catch (e: CancellationException) {
+            logger.info { "File watcher cancelled" }
+            throw e // Re-throw to properly cancel the coroutine
         } catch (e: Exception) {
             logger.error(e) { "Error in file watcher" }
+        } finally {
+            isWatching.set(false)
+            logger.info { "File watcher cleanup complete" }
         }
     }
 

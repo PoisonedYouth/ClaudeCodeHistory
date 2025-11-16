@@ -45,7 +45,9 @@ fun MainScreen() {
         indexingService.startWatching()
 
         onDispose {
+            // Clean up resources
             indexingService.shutdown()
+            ollamaClient.close()
         }
     }
 }

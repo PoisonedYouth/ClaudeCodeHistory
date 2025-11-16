@@ -7,6 +7,7 @@ import kotlinx.serialization.json.Json
 import mu.KotlinLogging
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
 import java.sql.ResultSet
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.TransactionManager
@@ -34,12 +35,23 @@ class ConversationRepository {
     fun search(query: String, filters: SearchFilters, limit: Int = 100): List<SearchResult> = transaction {
         val results = mutableListOf<SearchResult>()
 
-        // Build the complete SQL query with all parameters embedded
-        val sql = buildCompleteSearchQuery(query, filters, limit)
+        // Build parameterized SQL query
+        val (sql, parameters) = buildParameterizedSearchQuery(query, filters, limit)
 
-        // Execute using TransactionManager to avoid triggering hooks
-        val statement = TransactionManager.current().connection.prepareStatement(sql, false)
-        val resultSet = statement.executeQuery()
+        // Get the connection and create prepared statement
+        val connection = TransactionManager.current().connection
+        val stmt: PreparedStatementApi = connection.prepareStatement(sql, false)
+
+        // Set parameters using the underlying statement
+        parameters.forEachIndexed { index, param ->
+            when (param) {
+                is String -> stmt[index + 1] = param
+                is Long -> stmt[index + 1] = param
+                is Int -> stmt[index + 1] = param
+            }
+        }
+
+        val resultSet = stmt.executeQuery()
 
         while (resultSet.next()) {
             val conv = parseConversationFromResultSet(resultSet)
@@ -50,7 +62,6 @@ class ConversationRepository {
         }
 
         resultSet.close()
-        statement.closeIfPossible()
 
         logger.info { "Search returned ${results.size} results for query: $query" }
         results
@@ -68,77 +79,70 @@ class ConversationRepository {
         )
     }
 
-    private fun buildCompleteSearchQuery(query: String, filters: SearchFilters, limit: Int): String {
+    private fun buildParameterizedSearchQuery(query: String, filters: SearchFilters, limit: Int): Pair<String, List<Any>> {
         val conditions = mutableListOf<String>()
+        val parameters = mutableListOf<Any>()
 
-        // Escape single quotes in query for SQL safety
-        val escapedQuery = query.replace("'", "''")
+        // FTS5 MATCH doesn't support parameterized queries, so we need to escape it manually
+        // Remove or escape FTS5 special characters and SQL injection attempts
+        // Keep only alphanumeric characters, spaces, and basic punctuation
+        val sanitizedQuery = query
+            .replace(Regex("[\"'\\-*()=<>]"), " ") // Remove special chars that could be SQL or FTS5 operators
+            .replace(Regex("\\b(OR|AND|NOT|NEAR)\\b", RegexOption.IGNORE_CASE), " ") // Remove FTS5 keywords
+            .replace(Regex("\\s+"), " ") // Normalize whitespace
+            .trim()
+
+        val escapedFtsQuery = if (sanitizedQuery.isNotEmpty()) {
+            "\"$sanitizedQuery\""
+        } else {
+            "\"\"" // Empty query that won't match anything
+        }
 
         if (filters.projectPath != null) {
-            val escapedPath = filters.projectPath.replace("'", "''")
-            conditions.add("c.project_path LIKE '%$escapedPath%'")
+            conditions.add("c.project_path LIKE ?")
+            parameters.add("%${filters.projectPath}%")
         }
         if (filters.dateFrom != null) {
-            conditions.add("c.timestamp >= ${filters.dateFrom.toEpochMilliseconds()}")
+            conditions.add("c.timestamp >= ?")
+            parameters.add(filters.dateFrom.toEpochMilliseconds())
         }
         if (filters.dateTo != null) {
-            conditions.add("c.timestamp <= ${filters.dateTo.toEpochMilliseconds()}")
+            conditions.add("c.timestamp <= ?")
+            parameters.add(filters.dateTo.toEpochMilliseconds())
         }
         if (filters.role != null) {
-            conditions.add("c.role = '${filters.role.name}'")
+            conditions.add("c.role = ?")
+            parameters.add(filters.role.name)
         }
         if (filters.language != null) {
-            val escapedLang = filters.language.replace("'", "''")
-            conditions.add("c.language = '$escapedLang'")
+            conditions.add("c.language = ?")
+            parameters.add(filters.language)
         }
         if (filters.filePath != null) {
-            val escapedFilePath = filters.filePath.replace("'", "''")
-            conditions.add("c.file_path LIKE '%$escapedFilePath%'")
+            conditions.add("c.file_path LIKE ?")
+            parameters.add("%${filters.filePath}%")
         }
         if (filters.model != null) {
-            val escapedModel = filters.model.replace("'", "''")
-            conditions.add("c.metadata LIKE '%\"model\":\"$escapedModel\"%'")
+            conditions.add("c.metadata LIKE ?")
+            parameters.add("%\"model\":\"${filters.model}\"%")
         }
 
         val whereClause = if (conditions.isNotEmpty()) {
             "AND ${conditions.joinToString(" AND ")}"
         } else ""
 
-        return """
+        val sql = """
             SELECT c.id, c.session_id, c.project_path, c.timestamp, c.role, c.content, c.metadata,
                    conversations_fts.rank as rank
             FROM conversations c
             JOIN conversations_fts ON c.id = conversations_fts.rowid
-            WHERE conversations_fts MATCH '$escapedQuery'
+            WHERE conversations_fts MATCH $escapedFtsQuery
             $whereClause
             ORDER BY rank, c.timestamp DESC
             LIMIT $limit
         """.trimIndent()
-    }
 
-    private fun buildSearchQuery(filters: SearchFilters, limit: Int): String {
-        val conditions = mutableListOf<String>()
-
-        if (filters.projectPath != null) conditions.add("c.project_path LIKE ?")
-        if (filters.dateFrom != null) conditions.add("c.timestamp >= ?")
-        if (filters.dateTo != null) conditions.add("c.timestamp <= ?")
-        if (filters.role != null) conditions.add("c.role = ?")
-        if (filters.language != null) conditions.add("c.language = ?")
-        if (filters.filePath != null) conditions.add("c.file_path LIKE ?")
-
-        val whereClause = if (conditions.isNotEmpty()) {
-            "AND ${conditions.joinToString(" AND ")}"
-        } else ""
-
-        return """
-            SELECT c.*, fts.rank
-            FROM conversations c
-            JOIN conversations_fts fts ON c.id = fts.rowid
-            WHERE fts MATCH ?
-            $whereClause
-            ORDER BY fts.rank, c.timestamp DESC
-            LIMIT $limit
-        """.trimIndent()
+        return sql to parameters
     }
 
     private fun generateSnippet(content: String, query: String, maxLength: Int = 200): String {
@@ -220,6 +224,8 @@ class ConversationRepository {
         var query = Conversations.selectAll()
 
         // Build combined where clause with all active filters
+        // Note: Exposed DSL uses PreparedStatement internally, so string interpolation here
+        // is safe - it builds the pattern in Kotlin, then passes it as a parameter
         query = query.where {
             var condition: Op<Boolean> = Op.TRUE
 
@@ -360,28 +366,37 @@ class ConversationRepository {
     ): List<SearchResult> = transaction {
         val results = mutableListOf<SearchResult>()
 
-        // Build filter conditions
+        // Build parameterized filter conditions
         val conditions = mutableListOf<String>()
+        val parameters = mutableListOf<Any>()
+
         if (filters.projectPath != null) {
-            conditions.add("c.project_path LIKE '%${filters.projectPath.replace("'", "''")}%'")
+            conditions.add("c.project_path LIKE ?")
+            parameters.add("%${filters.projectPath}%")
         }
         if (filters.dateFrom != null) {
-            conditions.add("c.timestamp >= ${filters.dateFrom.toEpochMilliseconds()}")
+            conditions.add("c.timestamp >= ?")
+            parameters.add(filters.dateFrom.toEpochMilliseconds())
         }
         if (filters.dateTo != null) {
-            conditions.add("c.timestamp <= ${filters.dateTo.toEpochMilliseconds()}")
+            conditions.add("c.timestamp <= ?")
+            parameters.add(filters.dateTo.toEpochMilliseconds())
         }
         if (filters.role != null) {
-            conditions.add("c.role = '${filters.role.name}'")
+            conditions.add("c.role = ?")
+            parameters.add(filters.role.name)
         }
         if (filters.language != null) {
-            conditions.add("c.language = '${filters.language.replace("'", "''")}'")
+            conditions.add("c.language = ?")
+            parameters.add(filters.language)
         }
         if (filters.filePath != null) {
-            conditions.add("c.file_path LIKE '%${filters.filePath.replace("'", "''")}%'")
+            conditions.add("c.file_path LIKE ?")
+            parameters.add("%${filters.filePath}%")
         }
         if (filters.model != null) {
-            conditions.add("c.metadata LIKE '%\"model\":\"${filters.model.replace("'", "''")}\"%'")
+            conditions.add("c.metadata LIKE ?")
+            parameters.add("%\"model\":\"${filters.model}\"%")
         }
 
         val whereClause = if (conditions.isNotEmpty()) {
@@ -396,8 +411,19 @@ class ConversationRepository {
             $whereClause
         """.trimIndent()
 
-        val statement = TransactionManager.current().connection.prepareStatement(sql, false)
-        val resultSet = statement.executeQuery()
+        val connection = TransactionManager.current().connection
+        val stmt: PreparedStatementApi = connection.prepareStatement(sql, false)
+
+        // Set parameters using the underlying statement
+        parameters.forEachIndexed { index, param ->
+            when (param) {
+                is String -> stmt[index + 1] = param
+                is Long -> stmt[index + 1] = param
+                is Int -> stmt[index + 1] = param
+            }
+        }
+
+        val resultSet = stmt.executeQuery()
 
         val similarities = mutableListOf<Pair<Conversation, Double>>()
         while (resultSet.next()) {
@@ -410,7 +436,6 @@ class ConversationRepository {
         }
 
         resultSet.close()
-        statement.closeIfPossible()
 
         // Sort by similarity (highest first) and take top results
         val topResults = similarities
