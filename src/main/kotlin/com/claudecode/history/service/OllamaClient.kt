@@ -1,5 +1,7 @@
 package com.claudecode.history.service
 
+import com.claudecode.history.util.ValidationException
+import com.claudecode.history.util.ValidationUtils
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
@@ -36,22 +38,25 @@ class OllamaClient(
      * @param text The text to embed
      * @return FloatArray containing the embedding vector
      * @throws OllamaException if Ollama is not available or request fails
+     * @throws ValidationException if text doesn't meet requirements
      */
     suspend fun generateEmbedding(text: String): FloatArray {
         return try {
-            // Validate input
-            if (text.isBlank()) {
-                logger.warn { "Attempted to generate embedding for empty text" }
-                throw OllamaException("Cannot generate embedding for empty text")
+            // Validate and sanitize input
+            val validatedText = try {
+                ValidationUtils.validateEmbeddingText(text)
+            } catch (e: ValidationException) {
+                logger.warn(e) { "Embedding text validation failed" }
+                throw OllamaException("Invalid text for embedding: ${e.message}", e)
             }
 
-            logger.debug { "Generating embedding for text of length ${text.length}" }
+            logger.debug { "Generating embedding for text of length ${validatedText.length}" }
 
             val response: HttpResponse = client.post("$baseUrl/api/embed") {
                 contentType(ContentType.Application.Json)
                 setBody(EmbedRequest(
                     model = model,
-                    input = text
+                    input = validatedText
                 ))
             }
 

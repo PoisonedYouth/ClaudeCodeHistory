@@ -4,6 +4,8 @@ import com.claudecode.history.domain.Conversation
 import com.claudecode.history.domain.ConversationMetadata
 import com.claudecode.history.domain.MessageRole
 import com.claudecode.history.domain.ToolUse
+import com.claudecode.history.util.ValidationUtils
+import com.claudecode.history.util.ValidationException
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -15,6 +17,7 @@ import mu.KotlinLogging
 import java.io.File
 import java.nio.file.Path
 import kotlin.io.path.readLines
+import kotlin.io.path.useLines
 
 private val logger = KotlinLogging.logger {}
 
@@ -54,28 +57,55 @@ class ClaudeConversationParser {
     fun parseConversationFile(file: Path, projectPath: String): List<Conversation> {
         logger.info { "Parsing conversation file: $file" }
 
+        // Validate inputs
+        try {
+            ValidationUtils.validateFile(file)
+            ValidationUtils.validateProjectPath(projectPath)
+        } catch (e: ValidationException) {
+            logger.error(e) { "Validation failed for file: $file" }
+            throw e
+        }
+
         val conversations = mutableListOf<Conversation>()
         val sessionId = extractSessionId(file)
 
         try {
-            file.readLines().forEachIndexed { index, line ->
-                if (line.isBlank()) return@forEachIndexed
+            var lineCount = 0
 
-                try {
-                    val event = json.decodeFromString<ClaudeEvent>(line)
-
-                    if (event.message != null && event.timestamp != null) {
-                        val conversation = parseEvent(event, sessionId, projectPath)
-                        if (conversation != null) {
-                            conversations.add(conversation)
-                        }
+            // Use useLines for memory-efficient reading
+            file.useLines { lines ->
+                lines.forEachIndexed { index, line ->
+                    // Check line count limit
+                    lineCount++
+                    if (lineCount > ValidationUtils.MAX_LINES_PER_FILE) {
+                        logger.warn { "File $file exceeds max line count (${ValidationUtils.MAX_LINES_PER_FILE}), stopping parse" }
+                        return@useLines
                     }
-                } catch (e: Exception) {
-                    logger.warn(e) { "Failed to parse line $index in file $file: ${line.take(100)}" }
+
+                    if (line.isBlank()) return@forEachIndexed
+
+                    try {
+                        // Validate line length
+                        ValidationUtils.validateLineLength(line, index + 1)
+
+                        val event = json.decodeFromString<ClaudeEvent>(line)
+
+                        if (event.message != null && event.timestamp != null) {
+                            val conversation = parseEvent(event, sessionId, projectPath)
+                            if (conversation != null) {
+                                conversations.add(conversation)
+                            }
+                        }
+                    } catch (e: ValidationException) {
+                        logger.warn { "Validation error on line ${index + 1} in file $file: ${e.message}" }
+                    } catch (e: Exception) {
+                        logger.warn(e) { "Failed to parse line ${index + 1} in file $file: ${line.take(100)}" }
+                    }
                 }
             }
         } catch (e: Exception) {
             logger.error(e) { "Failed to read conversation file: $file" }
+            throw e
         }
 
         logger.info { "Parsed ${conversations.size} conversations from $file" }
@@ -189,7 +219,15 @@ class ClaudeConversationParser {
             )
         } else null
 
-        return content.toString().trim() to metadata
+        val contentStr = content.toString().trim()
+
+        // Validate content length
+        return try {
+            ValidationUtils.validateContentLength(contentStr, "Conversation content") to metadata
+        } catch (e: ValidationException) {
+            logger.warn { "Content too long (${contentStr.length} chars), truncating to ${ValidationUtils.MAX_CONTENT_LENGTH}" }
+            contentStr.take(ValidationUtils.MAX_CONTENT_LENGTH) to metadata
+        }
     }
 
     private fun detectLanguageFromPath(path: String): String? {
@@ -225,7 +263,15 @@ class ClaudeConversationParser {
         // Extract session ID from filename
         // Handles: chat_12345.jsonl, agent-abc123.jsonl, uuid.jsonl, etc.
         val filename = file.fileName.toString()
-        return filename.removeSuffix(".jsonl")
+        val sessionId = filename.removeSuffix(".jsonl")
+
+        return try {
+            ValidationUtils.validateSessionId(sessionId)
+        } catch (e: ValidationException) {
+            logger.warn { "Invalid session ID format: $sessionId, using sanitized version" }
+            // Fallback: sanitize the session ID
+            sessionId.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(ValidationUtils.MAX_SESSION_ID_LENGTH)
+        }
     }
 
     /**

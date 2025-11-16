@@ -1,5 +1,7 @@
 package com.claudecode.history.domain
 
+import com.claudecode.history.util.ValidationException
+import com.claudecode.history.util.ValidationUtils
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
@@ -73,6 +75,29 @@ data class SearchFilters(
     val filePath: String? = null,
     val model: String? = null
 ) {
+    init {
+        // Validate inputs to prevent injection attacks and excessive resource usage
+        projectPath?.let { ValidationUtils.validateProjectPath(it) }
+        filePath?.let { ValidationUtils.sanitizeFilePath(it) }
+
+        // Validate string lengths
+        language?.let {
+            if (it.length > 50) {
+                throw ValidationException("Language name too long: ${it.length} characters (max 50)")
+            }
+        }
+        model?.let {
+            if (it.length > 100) {
+                throw ValidationException("Model name too long: ${it.length} characters (max 100)")
+            }
+        }
+
+        // Validate date range
+        if (dateFrom != null && dateTo != null && dateFrom > dateTo) {
+            throw ValidationException("dateFrom cannot be after dateTo")
+        }
+    }
+
     fun hasActiveFilters(): Boolean {
         return projectPath != null || dateFrom != null || dateTo != null ||
                role != null || language != null || filePath != null || model != null
